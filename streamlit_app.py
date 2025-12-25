@@ -1,99 +1,160 @@
+
+
 import streamlit as st
 from supabase import create_client, Client
 import pdfplumber
 import pandas as pd
+import re
+import easyocr
+import numpy as np
+from PIL import Image
+from pdf2image import convert_from_bytes
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="MNSA ERP - Fixed Edition", layout="wide")
+st.set_page_config(page_title="MNSA ERP - المتكامل", layout="wide", initial_sidebar_state="expanded")
 
 # --- 2. بيانات الربط ---
-# يا مصطفى تأكد أنك تمسح أي مسافات زائدة قبل أو بعد الرابط والمفتاح
-URL = "https://orliczcgajbdllgjcgfe.supabase.co".strip() 
-KEY = "sb_secret_B7cwSIGnf_rKz48VKPaRzw_iVePq1CL".strip()
+# تأكد من وضع بياناتك الصحيحة هنا
+URL = "رابط_مشروعك_هنا".strip() 
+KEY = "مفتاح_مشروعك_هنا".strip()
 
 try:
     supabase: Client = create_client(URL, KEY)
-except Exception as e:
-    st.error(f"خطأ في الاتصال: {e}")
+except:
+    st.error("⚠️ فشل الاتصال بقاعدة البيانات. تأكد من الرابط والمفتاح.")
 
-# --- 3. دالة قراءة الـ PDF (محسنة للعربية) ---
-def extract_data(file):
-    try:
-        with pdfplumber.open(file) as pdf:
-            full_text = ""
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    full_text += page_text + "\n"
-            return full_text if full_text.strip() else "لم نجد نصاً داخل الملف، قد يكون الملف عبارة عن صور (Scan)."
-    except Exception as e:
-        return f"حدث خطأ أثناء قراءة الملف: {e}"
+# --- 3. تحميل محرك الذكاء الاصطناعي (مرة واحدة فقط) ---
+@st.cache_resource
+def load_ocr():
+    return easyocr.Reader(['ar', 'en'])
 
-# --- 4. القائمة الجانبية ---
-st.sidebar.title("🏗️ MNSA ERP")
-menu = st.sidebar.radio("القائمة", ["📊 لوحة التحكم", "📝 المناقصات والـ PDF", "📦 المخازن"])
+reader = load_ocr()
 
-# --- 5. محتوى الصفحات ---
+# --- 4. دالة معالجة المقايسات (النص والصور) ---
+def process_document(file):
+    text = ""
+    # المحاولة الأولى: قراءة PDF رقمي
+    with pdfplumber.open(file) as pdf:
+        for page in pdf.pages:
+            content = page.extract_text()
+            if content: text += content + "\n"
+    
+    # المحاولة الثانية: إذا كان الملف "سكانر"
+    if len(text.strip()) < 10:
+        st.info("🔄 جاري المسح الضوئي للصور (AI OCR)...")
+        file.seek(0)
+        images = convert_from_bytes(file.read())
+        for img in images:
+            img_np = np.array(img)
+            results = reader.readtext(img_np, detail=0)
+            text += " ".join(results) + "\n"
+    
+    # تحويل النص إلى جدول بيانات (البحث عن البند والكمية والوحدة)
+    pattern = r"(.+?)\s+(\d+(?:\.\d+)?)\s+(م3|م2|طن|عدد|لتر|م\.ط)"
+    matches = re.findall(pattern, text)
+    if matches:
+        return pd.DataFrame(matches, columns=['item', 'qty', 'unit'])
+    return text
+
+# --- 5. القائمة الجانبية الموحدة ---
+st.sidebar.markdown("<h2 style='text-align: center;'>MNSA ERP</h2>", unsafe_allow_html=True)
+menu = st.sidebar.selectbox("انتقل إلى:", ["📊 لوحة التحكم", "📝 رفع المقايسات", "📋 أرشيف المشاريع", "📦 إدارة المخازن"])
+
+# --- 6. محتوى الصفحات ---
+
 if menu == "📊 لوحة التحكم":
     st.title("🏗️ نظام إدارة شركة MNSA")
-    st.success("الآن النظام جاهز للعمل يا مصطفى.")
-
-elif menu == "📝 المناقصات والـ PDF":
-    st.title("📝 قراءة ملفات المناقصات")
-    uploaded_file = st.file_uploader("ارفع ملف PDF (تأكد أن الملف يحتوي على نص وليس صور فقط)", type=['pdf'])
-    
-    if uploaded_file:
-        with st.spinner("جاري قراءة محتوى الملف..."):
-            result = extract_data(uploaded_file)
-            st.success("تمت المعالجة!")
-            
-            # عرض النص المستخرج
-            content_box = st.text_area("محتوى الملف المستخرج:", result, height=300)
-            
-            # حفظ البيانات (مع تنظيف الحروف الخاصة)
-            if st.button("حفظ اسم المناقصة في القاعدة"):
-                # نرسل بيانات بسيطة أولاً للتأكد من نجاح الاتصال
-                try:
-                    data = {"title": "مناقصة جديدة", "status": "تحت الدراسة"}
-                    supabase.table("tenders").insert(data).execute()
-                    st.success("✅ تم الحفظ في قاعدة البيانات بنجاح!")
-                except Exception as e:
-                    st.error(f"❌ خطأ أثناء الحفظ: {e}")
-
-elif menu == "📦 المخازن":
-    st.title("📦 قسم المخازن")
-    st.info("هذا القسم سيتم تفعيله بعد ضبط المناقصات.")
-
-
-import streamlit as st
-import pandas as pd
-import re
-
-# (احتفظ بأكواد الربط والمكتبات كما هي في الأعلى)
-
-def extract_table_data(text):
-    # محرك بحث ذكي للبحث عن (البند - الوحدة - الكمية)
-    # يبحث عن أنماط مثل: "خرسانة 150 م3" أو "مباني 200 م2"
-    pattern = r"(.+?)\s+(\d+(?:\.\d+)?)\s+(م3|م2|طن|كيلو|عدد|لتر|م\.ط)"
-    matches = re.findall(pattern, text)
-    
-    if matches:
-        df = pd.DataFrame(matches, columns=['بيان الأعمال', 'الكمية', 'الوحدة'])
-        return df
-    return None
-
-# --- في جزء عرض النتائج ---
-if 'final_text' in locals() or 'final_text' in globals():
     st.markdown("---")
-    st.subheader("📊 الجداول المستخرجة تلقائياً")
-    
-    df_result = extract_table_data(final_text)
-    
-    if df_result is not None:
-        st.table(df_result) # عرض الجدول المنظم
+    # إحصائيات سريعة من القاعدة
+    try:
+        tenders_count = supabase.table("tenders").select("id", count="exact").execute()
+        st.metric("إجمالي المشاريع المسجلة", tenders_count.count if tenders_count.count else 0)
+    except:
+        st.info("ارفع أول مقايسة لتظهر الإحصائيات هنا.")
+
+elif menu == "📝 رفع المقايسات":
+    st.title("📝 معالجة وحصر المقايسات")
+    c1, c2 = st.columns(2)
+    with c1:
+        p_name = st.text_input("اسم المشروع/المناقصة")
+    with c2:
+        c_name = st.text_input("جهة الإسناد")
         
-        # زر لتحميل البيانات مباشرة لإكسل
-        csv = df_result.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("📥 تحميل المقايسة كملف Excel (CSV)", csv, "MNSA_Tender.csv", "text/csv")
-    else:
-        st.warning("لم نتمكن من تنظيم البيانات في جدول تلقائياً، جاري تحسين محرك البحث.")
+    uploaded_file = st.file_uploader("اختر ملف المقايسة (PDF)", type=['pdf'])
+    
+    if uploaded_file and p_name:
+        if st.button("بدء التحليل والحفظ"):
+            with st.spinner("ذكاء MNSA يحلل الملف الآن..."):
+                result = process_document(uploaded_file)
+                
+                if isinstance(result, pd.DataFrame):
+                    st.success(f"تم استخراج {len(result)} بند بنجاح!")
+                    st.dataframe(result, use_container_width=True)
+                    
+                    # حفظ في Supabase
+                    t_res = supabase.table("tenders").insert({"project_name": p_name, "client_name": c_name}).execute()
+                    t_id = t_res.data[0]['id']
+                    
+                    items_data = []
+                    for _, row in result.iterrows():
+                        items_data.append({
+                            "tender_id": t_id,
+                            "item_description": row['item'],
+                            "quantity": float(row['qty']),
+                            "unit": row['unit']
+                        })
+                    supabase.table("tender_items").insert(items_data).execute()
+                    st.balloons()
+                    st.success("✅ تم حفظ المشروع والبنود في قاعدة البيانات.")
+                else:
+                    st.warning("تم قراءة نص ولكن لم يتم تنظيم جدول. محتوى النص:")
+                    st.text(result)
+
+elif menu == "📋 أرشيف المشاريع":
+    st.title("📋 سجل المشاريع والكميات")
+    try:
+        res = supabase.table("tenders").select("*, tender_items(*)").execute()
+        if res.data:
+            for p in res.data:
+                with st.expander(f"📌 {p['project_name']} - {p['client_name']}"):
+                    st.write(f"تاريخ الإضافة: {p['created_at']}")
+                    if p['tender_items']:
+                        st.table(pd.DataFrame(p['tender_items'])[['item_description', 'unit', 'quantity']])
+        else:
+            st.info("لا توجد مشاريع مسجلة حالياً.")
+    except Exception as e:
+        st.error(f"حدث خطأ أثناء جلب البيانات: {e}")
+
+elif menu == "📦 إدارة المخازن":
+    st.title("📦 المشتريات والمخازن")
+    st.info("هذا القسم جاهز للربط مع ملفات الإكسل الخاصة بالمشتريات في الخطوة القادمة.")
+
+CREATE TABLE tenders (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    project_name TEXT NOT NULL,
+    client_name TEXT,
+    total_value NUMERIC,
+    status TEXT DEFAULT 'تحت الدراسة'
+); 
+
+
+CREATE TABLE tender_items (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    tender_id BIGINT REFERENCES tenders(id) ON DELETE CASCADE,
+    item_description TEXT, -- وصف البند
+    unit TEXT,             -- الوحدة (م3، م2، طن)
+    quantity NUMERIC,      -- الكمية من المقايسة
+    unit_price NUMERIC     -- فئة البند
+);  
+
+
+CREATE TABLE inventory_logs (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    tender_id BIGINT REFERENCES tenders(id),
+    item_name TEXT,
+    purchased_quantity NUMERIC,
+    purchase_date DATE DEFAULT CURRENT_DATE,
+    supplier_name TEXT
+);
+
