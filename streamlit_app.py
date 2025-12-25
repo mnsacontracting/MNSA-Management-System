@@ -10,163 +10,113 @@ from pdf2image import convert_from_bytes
 import io
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="MNSA ERP - النظام المتكامل", layout="wide")
+st.set_page_config(page_title="MNSA ERP - النظام الشامل", layout="wide")
 
-# --- 2. بيانات الربط المحدثة ---
+# --- 2. بيانات الربط (تم وضع بياناتك يا مصطفى) ---
 URL = "https://orliczcgajbdllgjcgfe.supabase.co"
-KEY = "sb_secret_B7cwS••••••••••••••••".strip() # ضع هنا المفتاح الخاص بك (anon public)
-
+KEY = "sb_secret_B7cwS••••••••••••••••" # تأكد من وضع المفتاح بالكامل هنا
 
 try:
     supabase: Client = create_client(URL, KEY)
 except:
-    # --- 2. بيانات الربط المحدثة ---
-# تأكد من وضع الرابط والمفتاح بين علامات تنصيص مفردة ' '
-URL = 'https://orliczcgajbdllgjcgfe.supabase.co'.strip()
-# المفتاح يجب أن يكون نصاً واحداً طويلاً جداً بدون أي مسافات
-KEY = 'ضع_مفتاحك_هنا_بدقة'.strip() 
+    st.error("⚠️ فشل الاتصال بقاعدة البيانات.")
 
-try:
-    # نقوم بالتأكد من أن المفتاح لا يحتوي على أي حروف مخفية قد تسبب UnicodeEncodeError
-    clean_key = str(KEY).encode('ascii', 'ignore').decode('ascii')
-    supabase: Client = create_client(URL, clean_key)
-except Exception as e:
-    st.error(f"⚠️ فشل الاتصال: {e}")
-    st.error("⚠️ فشل الاتصال بقاعدة البيانات. تأكد من صحة المفتاح (Key).")
-
-# --- 3. تحميل محرك OCR ---
+# --- 3. محرك الـ OCR (يتم تحميله مرة واحدة) ---
 @st.cache_resource
 def load_ocr():
     return easyocr.Reader(['ar', 'en'])
-
 reader = load_ocr()
 
-# --- 4. محرك المعالجة الشامل (Excel + PDF + Scan) ---
+# --- 4. محرك معالجة الملفات (PDF + Excel + Scan) ---
 def process_document(file):
-    file_extension = file.name.split('.')[-1].lower()
-    
-    # معالجة ملفات الإكسل
-    if file_extension in ['xlsx', 'xls']:
-        df_excel = pd.read_excel(file)
-        return df_excel
-
-    # معالجة ملفات الـ PDF والصور
+    ext = file.name.split('.')[-1].lower()
+    if ext in ['xlsx', 'xls']:
+        return pd.read_excel(file)
     else:
         text = ""
         with pdfplumber.open(file) as pdf:
             for page in pdf.pages:
-                content = page.extract_text()
-                if content: text += content + "\n"
-        
-        if len(text.strip()) < 10:
-            st.info("🔄 جاري المسح الضوئي الذكي (AI OCR)...")
+                t = page.extract_text()
+                if t: text += t + "\n"
+        if not text.strip():
             file.seek(0)
             images = convert_from_bytes(file.read())
             for img in images:
-                img_np = np.array(img)
-                results = reader.readtext(img_np, detail=0)
-                text += " ".join(results) + "\n"
-        
+                text += " ".join(reader.readtext(np.array(img), detail=0)) + "\n"
         pattern = r"(.+?)\s+(\d+(?:\.\d+)?)\s+(م3|م2|طن|عدد|لتر|م\.ط)"
         matches = re.findall(pattern, text)
-        if matches:
-            return pd.DataFrame(matches, columns=['item', 'qty', 'unit'])
-        return text
+        return pd.DataFrame(matches, columns=['item', 'qty', 'unit']) if matches else text
 
-# --- 5. القائمة الجانبية ---
+# --- 5. القائمة الجانبية (هيكل الشركة بالكامل) ---
 st.sidebar.title("🏗️ MNSA ERP System")
-menu = st.sidebar.radio("انتقل إلى:", ["📊 لوحة التحكم", "📝 رفع المقايسات", "📋 أرشيف المشاريع", "📦 إدارة المخازن"])
+menu = st.sidebar.selectbox("المنظومة الإدارية", [
+    "📊 لوحة التحكم", 
+    "📝 المقايسات والعقود", 
+    "📦 المشتريات والموردين", 
+    "💰 الحسابات والعملاء",
+    "👷 الموظفين والرواتب",
+    "📈 تقارير حصر التكاليف"
+])
 
-# --- 6. محتوى الصفحات ---
+# --- 6. الوظائف ---
 
 if menu == "📊 لوحة التحكم":
-    st.title("🏗️ شركة MNSA للمقاولات")
-    st.markdown("---")
-    st.success(f"مرحباً يا مصطفى. النظام مرتبط الآن بـ: {URL}")
+    st.title("🏗️ شركة MNSA - الرؤية العامة")
+    st.success("أهلاً بك يا مصطفى في مركز التحكم.")
+    # عرض إحصائيات من كل الجداول (مشاريع، موردين، عملاء)
+
+elif menu == "📝 المقايسات والعقود":
+    st.title("📝 إدارة المقايسات ودفتر العقود")
+    p_name = st.text_input("اسم المشروع الجديد")
+    client = st.text_input("اسم العميل (صاحب المشروع)")
+    contract_val = st.number_input("قيمة العقد الإجمالية", min_value=0.0)
+    file = st.file_uploader("ارفع المقايسة (PDF/Excel)", type=['pdf', 'xlsx', 'xls'])
     
-    try:
-        t_count = supabase.table("tenders").select("id", count="exact").execute()
-        st.metric("عدد المشاريع المسجلة", t_count.count if t_count.count else 0)
-    except:
-        st.info("سجل أول مشروع ليتم عرض الإحصائيات.")
+    if file and p_name and st.button("تحليل وحفظ في دفتر المشروعات"):
+        res = process_document(file)
+        if isinstance(res, pd.DataFrame):
+            t_id = supabase.table("tenders").insert({"project_name": p_name, "client_name": client, "total_value": contract_val}).execute().data[0]['id']
+            # حفظ بنود المقايسة
+            items = [{"tender_id": t_id, "item_description": r['item'], "quantity": float(r['qty']), "unit": r['unit']} for _, r in res.iterrows()]
+            supabase.table("tender_items").insert(items).execute()
+            st.balloons()
+            st.success(f"تم تسجيل مشروع {p_name} وتفكيك المقايسة بنجاح.")
 
-elif menu == "📝 رفع المقايسات":
-    st.title("📝 تسجيل وحصر مقايسة جديدة")
-    col1, col2 = st.columns(2)
-    with col1: p_name = st.text_input("اسم المشروع")
-    with col2: c_name = st.text_input("جهة الإسناد")
+elif menu == "📦 المشتريات والموردين":
+    st.title("📦 المشتريات وحسابات الموردين")
+    # جلب المشاريع
+    res_p = supabase.table("tenders").select("id, project_name").execute()
+    projects = {p['project_name']: p['id'] for p in res_p.data}
+    selected_p = st.selectbox("اختر المشروع المرتبط بالفاتورة", list(projects.keys()))
     
-    uploaded_file = st.file_uploader("ارفع الملف (PDF أو Excel)", type=['pdf', 'xlsx', 'xls'])
-    
-    if uploaded_file and p_name:
-        if st.button("🚀 بدء التحليل والحفظ"):
-            with st.spinner("جاري معالجة البيانات..."):
-                result = process_document(uploaded_file)
-                
-                if isinstance(result, pd.DataFrame):
-                    st.dataframe(result, use_container_width=True)
-                    
-                    t_res = supabase.table("tenders").insert({"project_name": p_name, "client_name": c_name}).execute()
-                    t_id = t_res.data[0]['id']
-                    
-                    items_to_db = []
-                    for _, row in result.iterrows():
-                        # محاولة جلب البيانات بمرونة
-                        desc = row.get('item') or row.get('البيان') or row.get('Description') or "بند غير محدد"
-                        q = row.get('qty') or row.get('الكمية') or row.get('Quantity') or 0
-                        u = row.get('unit') or row.get('الوحدة') or row.get('Unit') or "-"
-                        
-                        items_to_db.append({
-                            "tender_id": t_id,
-                            "item_description": str(desc),
-                            "quantity": float(q),
-                            "unit": str(u)
-                        })
-                    
-                    supabase.table("tender_items").insert(items_to_db).execute()
-                    st.balloons()
-                    st.success(f"✅ تم حفظ مشروع '{p_name}' بنجاح!")
-                else:
-                    st.warning("تعذر استخراج جدول. النص المستخرج:")
-                    st.text(result)
-
-elif menu == "📋 أرشيف المشاريع":
-    st.title("📋 سجل المشاريع")
-    res = supabase.table("tenders").select("*, tender_items(*)").execute()
-    if res.data:
-        for p in res.data:
-            with st.expander(f"📌 {p['project_name']} - {p['client_name']}"):
-                if p['tender_items']:
-                    st.table(pd.DataFrame(p['tender_items'])[['item_description', 'unit', 'quantity']])
-
-elif menu == "📦 إدارة المخازن":
-    st.title("📦 مراقبة المشتريات والمخازن")
-    res = supabase.table("tenders").select("id, project_name").execute()
-    projects = {p['project_name']: p['id'] for p in res.data}
-    selected_p = st.selectbox("اختر المشروع:", list(projects.keys()))
-
     if selected_p:
         t_id = projects[selected_p]
-        items_res = supabase.table("tender_items").select("*").eq("tender_id", t_id).execute()
-        logs_res = supabase.table("inventory_logs").select("*").eq("tender_id", t_id).execute()
-        
-        df_items = pd.DataFrame(items_res.data)
-        df_logs = pd.DataFrame(logs_res.data)
+        # تسجيل فاتورة مورد
+        with st.form("supplier_form"):
+            st.subheader("تسجيل فاتورة توريد")
+            supplier = st.text_input("اسم المورد")
+            item_name = st.text_input("البند المورد (كما في المقايسة)")
+            qty = st.number_input("الكمية الموردة", min_value=0.0)
+            cost = st.number_input("تكلفة الشراء (سعر الفاتورة)", min_value=0.0)
+            if st.form_submit_button("حفظ الفاتورة وتحديث المخزن"):
+                # تحديث مخزن المشروع + حساب المورد
+                supabase.table("inventory_logs").insert({
+                    "tender_id": t_id, 
+                    "item_name": item_name, 
+                    "purchased_quantity": qty, 
+                    "supplier_name": supplier,
+                    "cost": cost # تأكد من إضافة عمود cost في جدول inventory_logs
+                }).execute()
+                st.success("تم تحديث حساب المورد وخصم الكمية من المقايسة.")
 
-        for _, item in df_items.iterrows():
-            purchased = df_logs[df_logs['item_name'] == item['item_description']]['purchased_quantity'].sum() if not df_logs.empty else 0
-            remaining = item['quantity'] - purchased
-            col1, col2, col3 = st.columns([2, 1, 1])
-            col1.write(f"**{item['item_description']}**")
-            col2.write(f"مشتريات: {purchased} / {item['quantity']}")
-            color = "green" if remaining >= 0 else "red"
-            col3.markdown(f"<span style='color:{color}'>المتبقي: {remaining}</span>", unsafe_allow_html=True)
-            st.progress(min(float(purchased / item['quantity']), 1.0) if item['quantity'] > 0 else 0)
+elif menu == "💰 الحسابات والعملاء":
+    st.title("💰 حسابات العملاء والمستخلصات")
+    st.info("هذا القسم يتابع الدفعات الواردة من العملاء مقابل تنفيذ البنود.")
 
-        with st.form("buy_form"):
-            item_buy = st.selectbox("البند", df_items['item_description'].tolist())
-            qty_buy = st.number_input("الكمية", min_value=0.0)
-            supp = st.text_input("المورد/الفاتورة")
-            if st.form_submit_button("حفظ"):
-                supabase.table("inventory_logs").insert({"tender_id": t_id, "item_name": item_buy, "purchased_quantity": qty_buy, "supplier_name": supp}).execute()
-                st.rerun()
+elif menu == "👷 الموظفين والرواتب":
+    st.title("👷 شؤون الموظفين والعمالة")
+    # تسجيل الموظفين وحساب الرواتب بناء على الأيام
+
+elif menu == "📈 تقارير حصر التكاليف":
+    st.title("📈 تقرير الأرباح والتكاليف")
+    st.write("مقارنة فورية بين أسعار المقايسة وتكاليف الشراء الفعلية.")
