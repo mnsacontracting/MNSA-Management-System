@@ -77,3 +77,15 @@ elif menu == "📦 المخازن":
 # --- التذييل ---
 st.sidebar.markdown("---")
 st.sidebar.caption("MNSA Contracting | AI Powered")
+
+
+
+# --- بيانات الربط التي حُذفت ---
+# استبدل النقاط ببياناتك الحقيقية من Supabase
+URL = "sb_publishable_LmVQgvh1ActBvEOPS54Zgw_anYZN6lH"
+KEY = "sb_secret_B7cwSIGnf_rKz48VKPaRzw_iVePq1CL"
+
+try:
+    supabase: Client = create_client(URL, KEY)
+except Exception as e:
+    st.error(f"حدث خطأ في الاتصال: {e}")
