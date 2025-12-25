@@ -20,6 +20,18 @@ KEY = "sb_secret_B7cwS••••••••••••••••".strip() 
 try:
     supabase: Client = create_client(URL, KEY)
 except:
+    # --- 2. بيانات الربط المحدثة ---
+# تأكد من وضع الرابط والمفتاح بين علامات تنصيص مفردة ' '
+URL = 'https://orliczcgajbdllgjcgfe.supabase.co'.strip()
+# المفتاح يجب أن يكون نصاً واحداً طويلاً جداً بدون أي مسافات
+KEY = 'ضع_مفتاحك_هنا_بدقة'.strip() 
+
+try:
+    # نقوم بالتأكد من أن المفتاح لا يحتوي على أي حروف مخفية قد تسبب UnicodeEncodeError
+    clean_key = str(KEY).encode('ascii', 'ignore').decode('ascii')
+    supabase: Client = create_client(URL, clean_key)
+except Exception as e:
+    st.error(f"⚠️ فشل الاتصال: {e}")
     st.error("⚠️ فشل الاتصال بقاعدة البيانات. تأكد من صحة المفتاح (Key).")
 
 # --- 3. تحميل محرك OCR ---
