@@ -1,1 +1,14 @@
-poppler-utils 
+# --- 2. بيانات الربط ---
+# تأكد من وضع الرابط والمفتاح الحقيقيين بدلاً من النقاط
+URL_RAW = "https://orliczcgajbdllgjcgfe.supabase.co"
+KEY_RAW = "ضع_هنا_المفتاح_الكامل_بدون_نقاط" # المفتاح الذي يبدأ بـ sb_secret
+
+# تنظيف البيانات من أي رموز غير مرئية قد تسبب الخطأ
+URL = URL_RAW.strip()
+KEY = KEY_RAW.strip()
+
+try:
+    # إنشاء العميل مع التأكد من نوع البيانات
+    supabase: Client = create_client(URL, KEY)
+except Exception as e:
+    st.error(f"⚠️ فشل الاتصال: {e}")
