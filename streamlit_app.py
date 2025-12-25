@@ -2,111 +2,91 @@ import streamlit as st
 import pandas as pd
 
 # 1. إعدادات الصفحة
-st.set_page_config(page_title="MNSA ERP", layout="wide")
-st.title("🏗️ آلة المكتب الفني المتكاملة - MNSA")
+st.set_page_config(page_title="MNSA ERP - الحصر الاحترافي", layout="wide")
+st.title("🏗️ آلة المكتب الفني لشركة MNSA")
+st.info("يا مصطفى، إذا لم يتعرف النظام آلياً، اختر أسماء الأعمدة من القوائم التي ستظهر لك.")
 
-# --- محرك البحث عن الأعمدة ---
-def find_columns(df):
-    # مصفوفة الكلمات البحثية
-    search_keywords = {
-        'desc': ['بيان', 'بند', 'وصف', 'item', 'description', 'الأعمال'],
-        'qty': ['كمية', 'كميات', 'qty', 'quantity', 'العدد'],
-        'price': ['فئة', 'سعر', 'price', 'rate']
-    }
-    found_cols = {'desc': None, 'qty': None, 'price': None}
+# --- واجهة رفع الملف ---
+uploaded_file = st.file_uploader("ارفع ملف المقايسة (Excel)", type=['xlsx', 'xls'])
+
+if uploaded_file:
+    # قراءة الملف
+    df = pd.read_excel(uploaded_file)
     
-    # تنظيف أسماء الأعمدة
-    df.columns = [str(c).strip() for c in df.columns]
+    st.markdown("---")
+    st.subheader("🔍 إعدادات التعرف على البيانات")
     
-    for col in df.columns:
-        col_lower = col.lower()
-        for key, words in search_keywords.items():
-            if any(w in col_lower for w in words):
-                found_cols[key] = col
-                
-    # بحث إضافي في أول صفوف إذا لم يجد
-    if not found_cols['desc'] or not found_cols['qty']:
-        for i in range(min(5, len(df))):
-            for idx, cell in enumerate(df.iloc[i]):
-                cell_str = str(cell).lower()
-                for key, words in search_keywords.items():
-                    if found_cols[key] is None and any(w in cell_str for w in words):
-                        found_cols[key] = df.columns[idx]
-    return found_cols
-
-# --- دالة الحصر ---
-def run_calculation(df, cols):
-    results = {
-        "أسمنت (طن)": 0, "حديد (طن)": 0, "رمل (م3)": 0, "سن (م3)": 0,
-        "طوب (ألف)": 0, "سيراميك (م2)": 0, "دهانات (بستلة)": 0,
-        "أبواب (عدد)": 0, "شبابيك (عدد)": 0, "مواسير (م.ط)": 0
-    }
-    total_price = 0
+    # عرض قائمة بكل أعمدة الملف ليختار مصطفى منها
+    all_columns = df.columns.tolist()
     
-    # تحويل الكميات لأرقام
-    df[cols['qty']] = pd.to_numeric(df[cols['qty']], errors='coerce')
-    df_clean = df.dropna(subset=[cols['qty']])
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        desc_col = st.selectbox("اختر عمود (بيان الأعمال):", all_columns)
+    with col2:
+        qty_col = st.selectbox("اختر عمود (الكمية):", all_columns)
+    with col3:
+        price_col = st.selectbox("اختر عمود (الفئة/السعر) - اختياري:", ["لا يوجد"] + all_columns)
 
-    for _, row in df_clean.iterrows():
-        item = str(row[cols['desc']]).lower()
-        q = float(row[cols['qty']])
-        p = pd.to_numeric(row[cols['price']], errors='coerce') if cols['price'] else 0
-        total_price += (q * p)
-
-        # منطق الحصر
-        if any(x in item for x in ["مسلحة", "ميد", "أعمدة", "سقف"]):
-            results["أسمنت (طن)"] += q * 0.35
-            results["حديد (طن)"] += q * 0.09
-            results["رمل (م3)"] += q * 0.4
-            results["سن (م3)"] += q * 0.8
-        elif "عادية" in item:
-            results["أسمنت (طن)"] += q * 0.25
-            results["رمل (م3)"] += q * 0.4
-            results["سن (م3)"] += q * 0.8
+    if st.button("🚀 تنفيذ الحصر الشامل"):
+        # تجهيز النتائج
+        results = {
+            "أسمنت (طن)": 0, "حديد (طن)": 0, "رمل (م3)": 0, "سن/زلط (م3)": 0,
+            "طوب (ألف)": 0, "سيراميك (م2)": 0, "دهانات (بستلة)": 0,
+            "أبواب (عدد)": 0, "شبابيك (عدد)": 0, "مواسير شبكات (م.ط)": 0
+        }
+        total_val = 0
         
-        if "دهان" in item or "بلاستيك" in item:
-            results["دهانات (بستلة)"] += q / 25
-        if "سيراميك" in item: results["سيراميك (م2)"] += q
-        if "باب" in item: results["أبواب (عدد)"] += q
-        if "شباك" in item: results["شبابيك (عدد)"] += q
-        if any(x in item for x in ["مواسير", "حريق", "صرف"]):
-            results["مواسير (م.ط)"] += q
+        # تحويل الكميات لأرقام
+        df[qty_col] = pd.to_numeric(df[qty_col], errors='coerce')
+        df_clean = df.dropna(subset=[qty_col])
 
-    return results, total_price
+        for _, row in df_clean.iterrows():
+            item = str(row[desc_col]).lower()
+            qty = float(row[qty_col])
+            
+            # حساب القيمة المالية لو وجد عمود سعر
+            if price_col != "لا يوجد":
+                price = pd.to_numeric(row[price_col], errors='coerce') or 0
+                total_val += (qty * price)
 
-# --- الواجهة ---
-file = st.file_uploader("ارفع ملف الإكسل", type=['xlsx', 'xls'])
+            # --- منطق الحصر الهندسي ---
+            if any(x in item for x in ["مسلحة", "ميد", "أعمدة", "سقف", "كمرة"]):
+                results["أسمنت (طن)"] += qty * 0.35
+                results["حديد (طن)"] += qty * 0.095
+                results["رمل (م3)"] += qty * 0.4
+                results["سن/زلط (م3)"] += qty * 0.8
+            elif "عادية" in item or "فرشة" in item:
+                results["أسمنت (طن)"] += qty * 0.25
+                results["رمل (م3)"] += qty * 0.4
+                results["سن/زلط (م3)"] += qty * 0.8
+            
+            if "سيراميك" in item or "بورسلين" in item: results["سيراميك (م2)"] += qty
+            if "دهان" in item or "بلاستيك" in item: results["دهانات (بستلة)"] += qty / 25
+            if "باب" in item: results["أبواب (عدد)"] += qty
+            if "شباك" in item: results["شبابيك (عدد)"] += qty
+            if any(x in item for x in ["مواسير", "حريق", "صرف", "شبكة"]): results["مواسير شبكات (م.ط)"] += qty
 
-if file:
-    df = pd.read_excel(file)
-    identified_cols = find_columns(df)
-    
-    if identified_cols['desc'] and identified_cols['qty']:
-        st.success(f"✅ تم تحديد الأعمدة: {identified_cols['desc']} و {identified_cols['qty']}")
-        if st.button("🚀 ابدأ الحصر الشامل"):
-            final_res, total_val = run_calculation(df, identified_cols)
+        # --- عرض النتائج ---
+        if total_val > 0:
+            st.metric("💰 إجمالي قيمة المقايسة", f"{total_val:,.2f} جنيه")
             
-            if total_val > 0:
-                st.metric("💰 إجمالي قيمة العقد", f"{total_val:,.2f} ج.م")
-            
-            st.markdown("---")
-            t1, t2, t3 = st.tabs(["🏗️ إنشائي ومباني", "🎨 تشطيبات ونجارة", "🚿 شبكات"])
-            
-            with t1:
-                c = st.columns(2)
-                c[0].metric("أسمنت (طن)", f"{final_res['أسمنت (طن)']:,.2f}")
-                c[0].metric("حديد (طن)", f"{final_res['حديد (طن)']:,.2f}")
-                c[1].metric("رمل وسن (م3)", f"{final_res['رمل (م3)']+final_res['سن (م3)']:,.2f}")
-                c[1].metric("طوب (ألف)", f"{final_res['طوب (ألف)']:,.2f}")
-            
-            with t2:
-                c = st.columns(2)
-                c[0].metric("سيراميك (م2)", f"{final_res['سيراميك (م2)']:,.2f}")
-                c[0].metric("دهانات (بستلة)", f"{final_res['دهانات (بستلة)']:,.2f}")
-                c[1].metric("أبواب (عدد)", f"{final_res['أبواب (عدد)']:,.2f}")
-                c[1].metric("شبابيك (عدد)", f"{final_res['شبابيك (عدد)']:,.2f}")
-            
-            with t3:
-                st.metric("مواسير شبكات (م.ط)", f"{final_res['مواسير (م.ط)']:,.2f}")
-    else:
-        st.error("❌ لم يتم التعرف على الأعمدة. تأكد من وجود عمود للوصف وعمود للكمية.")
+        st.markdown("---")
+        t1, t2, t3 = st.tabs(["🏗️ إنشاءات ومباني", "🎨 تشطيبات ونجارة", "🚿 شبكات ومواسير"])
+        
+        with t1:
+            c = st.columns(2)
+            c[0].metric("أسمنت (طن)", f"{results['أسمنت (طن)']:,.2f}")
+            c[0].metric("حديد تسليح (طن)", f"{results['حديد (طن)']:,.2f}")
+            c[1].metric("رمل وسن (م3)", f"{results['رمل (م3)']+results['سن/زلط (م3)']:,.2f}")
+            c[1].metric("طوب (ألف طوبة)", f"{results['طوب (ألف)']:,.2f}")
+        
+        with t2:
+            c = st.columns(2)
+            c[0].metric("سيراميك/بورسلين (م2)", f"{results['سيراميك (م2)']:,.2f}")
+            c[0].metric("دهانات (بستلة)", f"{results['دهانات (بستلة)']:,.2f}")
+            c[1].metric("أبواب (عدد)", f"{results['أبواب (عدد)']:,.2f}")
+            c[1].metric("شبابيك (عدد)", f"{results['شبابيك (عدد)']:,.2f}")
+        
+        with t3:
+            st.metric("إجمالي المواسير والشبكات (م.ط)", f"{results['مواسير شبكات (م.ط)']:,.2f}")
+            st.success("تم الحصر بنجاح بناءً على اختيارك للأعمدة.")
