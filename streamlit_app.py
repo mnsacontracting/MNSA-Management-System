@@ -63,3 +63,37 @@ elif menu == "📝 المناقصات والـ PDF":
 elif menu == "📦 المخازن":
     st.title("📦 قسم المخازن")
     st.info("هذا القسم سيتم تفعيله بعد ضبط المناقصات.")
+
+
+import streamlit as st
+import pandas as pd
+import re
+
+# (احتفظ بأكواد الربط والمكتبات كما هي في الأعلى)
+
+def extract_table_data(text):
+    # محرك بحث ذكي للبحث عن (البند - الوحدة - الكمية)
+    # يبحث عن أنماط مثل: "خرسانة 150 م3" أو "مباني 200 م2"
+    pattern = r"(.+?)\s+(\d+(?:\.\d+)?)\s+(م3|م2|طن|كيلو|عدد|لتر|م\.ط)"
+    matches = re.findall(pattern, text)
+    
+    if matches:
+        df = pd.DataFrame(matches, columns=['بيان الأعمال', 'الكمية', 'الوحدة'])
+        return df
+    return None
+
+# --- في جزء عرض النتائج ---
+if 'final_text' in locals() or 'final_text' in globals():
+    st.markdown("---")
+    st.subheader("📊 الجداول المستخرجة تلقائياً")
+    
+    df_result = extract_table_data(final_text)
+    
+    if df_result is not None:
+        st.table(df_result) # عرض الجدول المنظم
+        
+        # زر لتحميل البيانات مباشرة لإكسل
+        csv = df_result.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("📥 تحميل المقايسة كملف Excel (CSV)", csv, "MNSA_Tender.csv", "text/csv")
+    else:
+        st.warning("لم نتمكن من تنظيم البيانات في جدول تلقائياً، جاري تحسين محرك البحث.")
