@@ -1,8 +1,10 @@
-
 streamlit
 supabase
-pdfplumber
 pandas
+pdfplumber
+easyocr
+opencv-python-headless
+torch
+torchvision
+Pillow
 pdf2image
-pytesseract
-pillow
