@@ -1,77 +1,91 @@
 import streamlit as st
 import pandas as pd
 
-# 1. إعدادات الصفحة
-st.set_page_config(page_title="MNSA - المكتب الفني", layout="wide")
-
+st.set_page_config(page_title="MNSA - المكتب الفني المطور", layout="wide")
 st.title("🏗️ آلة المكتب الفني لشركة MNSA")
 
-# دالة التعرف على الأعمدة المصرية
-def find_column(df, target_names):
+# دالة ذكية جداً للبحث عن الأعمدة في كامل الملف
+def smart_find_columns(df):
+    # محاولة تنظيف الملف من الصفوف الفارغة في البداية
+    df_clean = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
+    
+    # الكلمات التي نبحث عنها
+    targets = {
+        'desc': ['بيان الأعمال', 'بيان الاعمال', 'البند', 'الوصف', 'item'],
+        'qty': ['الكمية', 'الكميات', 'كمية', 'qty'],
+        'price': ['الفئة', 'السعر', 'سعر', 'price']
+    }
+    
+    found = {'desc': None, 'qty': None, 'price': None}
+    
+    # البحث في أول 10 صفوف وفي أسماء الأعمدة الحالية
+    for i in range(min(10, len(df))):
+        row_values = df.iloc[i].astype(str).tolist()
+        for col_idx, value in enumerate(row_values):
+            clean_val = value.strip().lower()
+            for key, keywords in targets.items():
+                if any(k in clean_val for k in keywords):
+                    found[key] = df.columns[col_idx]
+                    
+    # إذا لم يجد في الصفوف، يبحث في أسماء الأعمدة الأصلية
     for col in df.columns:
         clean_col = str(col).strip().lower()
-        for target in target_names:
-            if target in clean_col:
-                return col
-    return None
+        for key, keywords in targets.items():
+            if found[key] is None and any(k in clean_col for k in keywords):
+                found[key] = col
+                
+    return found
 
-# 2. محرك التحليل الهندسي
-def analyze_boq(df, desc_col, qty_col, price_col):
-    summary = {
-        "أسمنت (طن)": 0, "رمل (م3)": 0, "سن/زلط (م3)": 0,
-        "حديد (طن)": 0, "سيراميك (م2)": 0, "دهانات (بستلة)": 0,
-        "مواسير شبكات (م.ط)": 0
-    }
+# دالة التحليل الهندسي
+def analyze_boq(df, cols):
+    summary = {"أسمنت (طن)": 0, "رمل (م3)": 0, "سن (م3)": 0, "حديد (طن)": 0, "سيراميك (م2)": 0, "مواسير (م.ط)": 0}
     total_val = 0
     
+    # بدء التحليل من بعد صف الرؤوس
     for index, row in df.iterrows():
         try:
-            item = str(row[desc_col]).lower()
-            qty = float(row[qty_col]) if pd.notnull(row[qty_col]) else 0
-            price = float(row[price_col]) if price_col and pd.notnull(row[price_col]) else 0
+            item = str(row[cols['desc']]).lower()
+            qty = pd.to_numeric(row[cols['qty']], errors='coerce') or 0
+            price = pd.to_numeric(row[cols['price']], errors='coerce') if cols['price'] else 0
             total_val += (qty * price)
 
-            # تحليل البنود
-            if any(x in item for x in ["خرسانة مسلحة", "قواعد", "أعمدة", "سقف", "ميد"]):
+            if any(x in item for x in ["مسلحة", "قواعد", "أعمدة", "سقف"]):
                 summary["أسمنت (طن)"] += qty * 0.35
                 summary["رمل (م3)"] += qty * 0.4
-                summary["سن/زلط (م3)"] += qty * 0.8
+                summary["سن (م3)"] += qty * 0.8
                 summary["حديد (طن)"] += qty * 0.09
             elif "عادية" in item:
                 summary["أسمنت (طن)"] += qty * 0.25
                 summary["رمل (م3)"] += qty * 0.4
-                summary["سن/زلط (م3)"] += qty * 0.8
-            if any(x in item for x in ["سيراميك", "بورسلين", "تكسيات"]):
+                summary["سن (م3)"] += qty * 0.8
+            if "سيراميك" in item or "بورسلين" in item:
                 summary["سيراميك (م2)"] += qty
-            if any(x in item for x in ["دهانات", "بلاستيك", "وجه"]):
-                summary["دهانات (بستلة)"] += qty / 30
-            if any(x in item for x in ["مواسير", "حريق", "شبكة", "صرف", "upvc"]):
-                summary["مواسير شبكات (م.ط)"] += qty
-        except:
-            continue
+            if "مواسير" in item or "حريق" in item or "شبكة" in item:
+                summary["مواسير (م.ط)"] += qty
+        except: continue
     return summary, total_val
 
-# 3. الواجهة
 uploaded_file = st.file_uploader("ارفع مقايسة المشروع (Excel)", type=['xlsx', 'xls'])
 
 if uploaded_file:
-    df = pd.read_excel(uploaded_file)
-    desc_col = find_column(df, ['بيان الأعمال', 'بيان الاعمال', 'البند', 'الوصف'])
-    qty_col = find_column(df, ['الكمية', 'الكميات', 'كمية'])
-    price_col = find_column(df, ['الفئة', 'السعر', 'سعر الوحده'])
+    # قراءة الملف بدون تحديد رؤوس أعمدة أولاً
+    raw_df = pd.read_excel(uploaded_file)
     
-    if desc_col and qty_col:
-        st.success(f"✅ تم التعرف على الأعمدة بنجاح")
-        if st.button("🚀 تشغيل تحليل المكتب الفني"):
-            results, total_project = analyze_boq(df, desc_col, qty_col, price_col)
-            
-            if price_col:
-                st.metric("💰 إجمالي قيمة العقد", f"{total_project:,.2f} جنيه")
+    cols = smart_find_columns(raw_df)
+    
+    if cols['desc'] and cols['qty']:
+        st.success(f"✅ تم العثور على البنود في عمود: {cols['desc']}")
+        if st.button("🚀 تشغيل التحليل"):
+            results, total_project = analyze_boq(raw_df, cols)
+            if cols['price']:
+                st.metric("💰 إجمالي قيمة المقايسة", f"{total_project:,.2f} جنيه")
             
             st.markdown("---")
-            st.subheader("🏁 حصر المواد الخام المطلوبة")
-            cols = st.columns(4)
+            st.subheader("🏁 حصر الخامات المطلوبة")
+            c = st.columns(3)
             for i, (label, value) in enumerate(results.items()):
-                cols[i % 4].metric(label, f"{value:,.2f}")
+                c[i % 3].metric(label, f"{value:,.2f}")
     else:
-        st.error("❌ لم أجد أعمدة (بيان الأعمال) و (الكمية). تأكد من مسميات الأعمدة في الإكسل.")
+        st.error("❌ لم أجد الأعمدة. البرنامج سيعرض لك أسماء الأعمدة التي قرأها لتتأكد:")
+        st.write(list(raw_df.columns))
+        st.info("نصيحة: تأكد أن ملف الإكسل لا يحتوي على خلايا مدمجة (Merged Cells) في صف الرؤوس.")
