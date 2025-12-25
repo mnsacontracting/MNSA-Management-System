@@ -10,8 +10,8 @@ st.set_page_config(page_title="MNSA ERP - AI Edition", layout="wide")
 # تأكد أن الرابط يبدأ بـ https:// وينتهي بـ .co
 # وتأكد أن المفتاح طويل جداً
 URL = "https://orliczcgajbdllgjcgfe.supabase.co" 
-KEY = "sb_secret_B7cwS
-••••••••••••••••"
+KEY = "sb_secret_B7cwS••••••••••••••••"
+
 
 # محاولة الربط بالقاعدة
 try:
