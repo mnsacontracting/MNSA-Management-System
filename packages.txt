@@ -1,14 +1,20 @@
-# --- 2. بيانات الربط ---
-# تأكد من وضع الرابط والمفتاح الحقيقيين بدلاً من النقاط
-URL_RAW = "https://orliczcgajbdllgjcgfe.supabase.co"
-KEY_RAW = "ضع_هنا_المفتاح_الكامل_بدون_نقاط" # المفتاح الذي يبدأ بـ sb_secret
-
-# تنظيف البيانات من أي رموز غير مرئية قد تسبب الخطأ
-URL = URL_RAW.strip()
-KEY = KEY_RAW.strip()
-
-try:
-    # إنشاء العميل مع التأكد من نوع البيانات
-    supabase: Client = create_client(URL, KEY)
-except Exception as e:
-    st.error(f"⚠️ فشل الاتصال: {e}")
+def process_document(file):
+    ext = file.name.split('.')[-1].lower()
+    if ext in ['xlsx', 'xls']:
+        return pd.read_excel(file)
+    else:
+        text = ""
+        try:
+            with pdfplumber.open(file) as pdf:
+                for page in pdf.pages:
+                    t = page.extract_text()
+                    if t: text += t + "\n"
+            
+            # محرك البحث عن البنود (Regex)
+            pattern = r"(.+?)\s+(\d+(?:\.\d+)?)\s+(م3|م2|طن|عدد|لتر|م\.ط)"
+            matches = re.findall(pattern, text)
+            if matches:
+                return pd.DataFrame(matches, columns=['item', 'qty', 'unit'])
+            return text
+        except Exception as e:
+            return f"حدث خطأ في قراءة الملف: {e}"
