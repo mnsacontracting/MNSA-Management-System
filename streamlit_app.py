@@ -28,7 +28,7 @@ def super_find_columns(df):
         if found['desc'] is None or found['qty'] is None:
             for val in search_area[col]:
                 val_clean = str(val).strip().lower()
-                for key, keywords in targets.items(): # تم تعديل التسمية هنا لتطابق targets
+                for key, keywords in targets.items(): # تم تصحيح الاسم هنا ليتوافق مع targets
                     if found[key] is None and any(k in val_clean for k in keywords):
                         found[key] = col
     return found
@@ -54,25 +54,25 @@ def run_takeoff(df, cols):
             price = pd.to_numeric(row[cols['price']], errors='coerce') if cols['price'] else 0
             total_val += (qty * price)
 
-            # --- الإنشاءات ---
+            # --- تحليل الأعمال الإنشائية ---
             if any(x in item for x in ["مسلحة", "ميد", "أعمدة", "سقف", "كمرة"]):
                 m["أسمنت (طن)"] += qty * 0.35; m["حديد (طن)"] += qty * 0.095
                 m["رمل (م3)"] += qty * 0.4; m["سن/زلط (م3)"] += qty * 0.8
-            elif "عادية" in item:
+            elif "عادية" in item or "فرشة" in item:
                 m["أسمنت (طن)"] += qty * 0.25; m["رمل (م3)"] += qty * 0.4; m["سن/زلط (م3)"] += qty * 0.8
             
-            # --- الدهانات والتشطيبات ---
+            # --- تحليل الدهانات والتشطيبات ---
             if any(x in item for x in ["دهانات", "بلاستيك", "نقاشة"]):
                 m["معجون دهانات (شكارة)"] += qty * 0.06
                 m["دهان بلاستيك (بستلة)"] += qty / 25
             if "سيراميك" in item or "بلاط" in item: m["سيراميك (م2)"] += qty
             if "مباني" in item: m["طوب (ألف)"] += qty * 0.06
 
-            # --- النجارة ---
+            # --- تحليل النجارة (أبواب وشبابيك) ---
             if "باب" in item or "أبواب" in item: m["أبواب (عدد)"] += qty
             if "شباك" in item or "شبابيك" in item: m["شبابيك (عدد)"] += qty
 
-            # --- الشبكات ---
+            # --- تحليل الشبكات ---
             if "حريق" in item: m["مواسير حريق (م.ط)"] += qty
             elif any(x in item for x in ["صرف", "upvc", "مواسير"]): m["مواسير صرف (م.ط)"] += qty
             if any(x in item for x in ["محبس", "صندوق", "قطع"]): m["قطع/محابس (عدد)"] += qty
