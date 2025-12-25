@@ -2,9 +2,7 @@ streamlit
 supabase
 pandas
 pdfplumber
-easyocr
-opencv-python-headless
-torch
-torchvision
-Pillow
+openpyxl
 pdf2image
+Pillow
+opencv-python-headless
