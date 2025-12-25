@@ -15,8 +15,9 @@ st.set_page_config(page_title="MNSA ERP - المتكامل", layout="wide", init
 
 # --- 2. بيانات الربط ---
 # تأكد من وضع بياناتك الصحيحة هنا
-URL = "رابط_مشروعك_هنا".strip() 
-KEY = "مفتاح_مشروعك_هنا".strip()
+URL = "https://orliczcgajbdllgjcgfe.supabase.co".strip() 
+KEY = "sb_secret_B7cwS••••••••••••••••".strip()
+
 
 try:
     supabase: Client = create_client(URL, KEY)
