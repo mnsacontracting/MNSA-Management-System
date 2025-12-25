@@ -1,108 +1,101 @@
 import streamlit as st
 import pandas as pd
 
-# 1. إعدادات الصفحة
 st.set_page_config(page_title="MNSA - المكتب الفني", layout="wide")
+st.title("🏗️ آلة المكتب الفني (رادار الأعمدة الذكي)")
 
-st.title("🏗️ آلة المكتب الفني الذكية - شركة MNSA")
-st.markdown("### حصر شامل للمواد (إنشاءات - تشطيبات - شبكات حريق وصرف)")
-
-# --- دالة إيجاد الأعمدة مهما كانت التسمية ---
-def find_columns_flexibly(df):
-    search_map = {
+# --- محرك البحث المتقدم عن الأعمدة ---
+def super_find_columns(df):
+    targets = {
         'desc': ['بيان', 'بند', 'وصف', 'item', 'description', 'work'],
         'qty': ['كمية', 'كميات', 'qty', 'quantity', 'العدد'],
-        'price': ['فئة', 'سعر', 'price', 'rate', 'القيمة']
+        'price': ['فئة', 'سعر', 'price', 'rate']
     }
     found = {'desc': None, 'qty': None, 'price': None}
     
-    # البحث في أسماء الأعمدة
+    # تحويل أول 20 صفاً إلى نص للبحث فيها
+    search_area = df.head(20).astype(str)
+    
     for col in df.columns:
-        c_clean = str(col).strip().lower()
-        for key, keywords in search_map.items():
-            if any(k in c_clean for k in keywords):
+        # 1. البحث في اسم العمود نفسه
+        c_name = str(col).strip().lower()
+        for key, keywords in targets.items():
+            if any(k in c_name for k in keywords):
                 found[key] = col
-                
-    # البحث في أول 5 صفوف (لحالات الخلايا المدمجة)
-    if not found['desc'] or not found['qty']:
-        for i in range(min(5, len(df))):
-            row_vals = df.iloc[i].astype(str).tolist()
-            for idx, val in enumerate(row_vals):
-                v_clean = val.strip().lower()
-                for key, keywords in search_map.items():
-                    if found[key] is None and any(k in v_clean for k in keywords):
-                        found[key] = df.columns[idx]
+        
+        # 2. البحث داخل خلايا العمود (في حال وجود خلايا مدمجة أو عناوين تائهة)
+        if found['desc'] is None or found['qty'] is None:
+            for val in search_area[col]:
+                val_clean = val.strip().lower()
+                for key, keywords in targets.items():
+                    if found[key] is None and any(k in val_clean for k in keywords):
+                        found[key] = col
     return found
 
-# --- دالة الحصر الهندسي ---
-def run_full_takeoff(df, cols):
+# --- دالة الحصر الشامل ---
+def run_takeoff(df, cols):
     m = {
-        "أسمنت بورتلاندي (طن)": 0, "حديد تسليح (طن)": 0, "رمل (م3)": 0, "سن/زلط (م3)": 0,
-        "طوب (ألف طوبة)": 0, "سيراميك (م2)": 0, "دهانات (بستلة)": 0, 
-        "مواسير حريق (م.ط)": 0, "مواسير صرف (م.ط)": 0, "محابس وقطع (عدد)": 0
+        "أسمنت (طن)": 0, "حديد (طن)": 0, "رمل (م3)": 0, "سن (م3)": 0,
+        "طوب (ألف)": 0, "سيراميك (م2)": 0, "دهانات (بستلة)": 0, 
+        "مواسير حريق (م.ط)": 0, "مواسير صرف (م.ط)": 0, "قطع/محابس (عدد)": 0
     }
     total_val = 0
     
-    for _, row in df.iterrows():
+    # محاولة تنظيف البيانات (حذف الصفوف التي لا تحتوي على أرقام في خانة الكمية)
+    df[cols['qty']] = pd.to_numeric(df[cols['qty']], errors='coerce')
+    df_clean = df.dropna(subset=[cols['qty']])
+
+    for _, row in df_clean.iterrows():
         try:
             item = str(row[cols['desc']]).lower()
-            qty = pd.to_numeric(row[cols['qty']], errors='coerce') or 0
+            qty = float(row[cols['qty']])
             price = pd.to_numeric(row[cols['price']], errors='coerce') if cols['price'] else 0
             total_val += (qty * price)
 
-            # تحليل الإنشاءات
-            if any(x in item for x in ["مسلحة", "ميد", "أعمدة", "سقف", "كمرات"]):
-                m["أسمنت بورتلاندي (طن)"] += qty * 0.35
-                m["حديد تسليح (طن)"] += qty * 0.095
-                m["رمل (م3)"] += qty * 0.4
-                m["سن/زلط (م3)"] += qty * 0.8
-            elif "عادية" in item or "فرشة" in item:
-                m["أسمنت بورتلاندي (طن)"] += qty * 0.25
-                m["رمل (م3)"] += qty * 0.4
-                m["سن/زلط (م3)"] += qty * 0.8
-
-            # تحليل الشبكات
+            # --- منطق الحصر ---
+            if any(x in item for x in ["مسلحة", "ميد", "أعمدة", "سقف"]):
+                m["أسمنت (طن)"] += qty * 0.35; m["حديد (طن)"] += qty * 0.095
+                m["رمل (م3)"] += qty * 0.4; m["سن (م3)"] += qty * 0.8
+            elif "عادية" in item:
+                m["أسمنت (طن)"] += qty * 0.25; m["رمل (م3)"] += qty * 0.4; m["سن (م3)"] += qty * 0.8
             if "حريق" in item: m["مواسير حريق (م.ط)"] += qty
-            elif any(x in item for x in ["صرف", "upvc", "مواسير", "بنية"]): m["مواسير صرف (م.ط)"] += qty
-            if any(x in item for x in ["محبس", "صندوق", "قطع"]): m["محابس وقطع (عدد)"] += qty
-
-            # تحليل التشطيبات والمباني
-            if "مباني" in item: m["طوب (ألف طوبة)"] += qty * 0.06
-            if "سيراميك" in item or "بلاط" in item: m["سيراميك (م2)"] += qty
-            if "دهانات" in item or "بلاستيك" in item: m["دهانات (بستلة)"] += qty / 25
+            if "صرف" in item or "upvc" in item: m["مواسير صرف (م.ط)"] += qty
+            if "سيراميك" in item: m["سيراميك (م2)"] += qty
+            if "مباني" in item: m["طوب (ألف)"] += qty * 0.06
         except: continue
-        
     return m, total_val
 
 # --- الواجهة ---
-uploaded_file = st.file_uploader("ارفع مقايسة المشروع (Excel)", type=['xlsx', 'xls'])
+file = st.file_uploader("ارفع المقايسة", type=['xlsx', 'xls'])
 
-if uploaded_file:
-    df_raw = pd.read_excel(uploaded_file)
-    cols = find_columns_flexibly(df_raw)
+if file:
+    df = pd.read_excel(file)
+    # عرض شكل الملف للتأكد
+    with st.expander("🔍 معاينة الملف كما يراه النظام"):
+        st.write(df.head(15))
+    
+    cols = super_find_columns(df)
     
     if cols['desc'] and cols['qty']:
-        st.success(f"✅ تم التعرف على: ({cols['desc']}) و ({cols['qty']})")
-        if st.button("🚀 تنفيذ الحصر الهندسي والمالي"):
-            results, total_v = run_full_takeoff(df_raw, cols)
-            if cols['price']:
-                st.metric("💰 إجمالي قيمة المقايسة", f"{total_v:,.2f} ج.م")
+        st.success(f"🎯 رادار MNSA وجد الأعمدة: البيان [{cols['desc']}] | الكمية [{cols['qty']}]")
+        if st.button("🚀 تحليل وحصر المقايسة"):
+            res, total = run_takeoff(df, cols)
+            if total > 0: st.metric("💰 إجمالي قيمة العقد", f"{total:,.2f} ج.م")
             
             st.markdown("---")
-            t1, t2, t3 = st.tabs(["🏗️ إنشاءات ومباني", "🎨 تشطيبات", "🚿 شبكات ومواسير"])
-            with t1:
+            tabs = st.tabs(["🏗️ إنشائي ومباني", "🎨 تشطيبات", "🚿 شبكات"])
+            with tabs[0]:
                 c1, c2 = st.columns(2)
-                c1.metric("أسمنت (طن)", f"{results['أسمنت بورتلاندي (طن)']:,.2f}")
-                c1.metric("حديد تسليح (طن)", f"{results['حديد تسليح (طن)']:,.2f}")
-                c2.metric("طوب (ألف)", f"{results['طوب (ألف طوبة)']:,.2f}")
-                c2.metric("رمل وسن (م3)", f"{results['سن/زلط (م3)'] + results['رمل (م3)']:,.2f}")
-            with t2:
-                st.metric("سيراميك (م2)", f"{results['سيراميك (م2)']:,.2f}")
-                st.metric("دهانات (بستلة)", f"{results['دهانات (بستلة)']:,.2f}")
-            with t3:
-                st.metric("مواسير حريق (م.ط)", f"{results['مواسير حريق (م.ط)']:,.2f}")
-                st.metric("مواسير صرف (م.ط)", f"{results['مواسير صرف (م.ط)']:,.2f}")
-                st.metric("محابس وقطع (عدد)", f"{results['محابس وقطع (عدد)']:,.2f}")
+                c1.metric("أسمنت (طن)", f"{res['أسمنت (طن)']:,.2f}")
+                c1.metric("حديد (طن)", f"{res['حديد (طن)']:,.2f}")
+                c2.metric("طوب (ألف)", f"{res['طوب (ألف)']:,.2f}")
+                c2.metric("رمل وسن (م3)", f"{res['رمل (م3)'] + res['سن (م3)']:,.2f}")
+            with tabs[1]:
+                st.metric("سيراميك (م2)", f"{res['سيراميك (م2)']:,.2f}")
+            with tabs[2]:
+                st.metric("مواسير حريق (م.ط)", f"{res['مواسير حريق (م.ط)']:,.2f}")
+                st.metric("مواسير صرف (م.ط)", f"{res['مواسير صرف (م.ط)']:,.2f}")
     else:
-        st.error("❌ لم أتمكن من العثور على أعمدة البيان والكمية.")
-        st.write("الأعمدة المكتشفة:", list(df_raw.columns))
+        st.error("❌ فشل الرادار في العثور على الأعمدة.")
+        st.write("أسماء الأعمدة المتاحة حالياً في ملفك:", list(df.columns))
+        st.info("💡 نصيحة المهندس: تأكد أن ملف الإكسل يبدأ بجدول البيانات مباشرة ولا توجد نصوص كثيرة فوق جدول الكميات.")
