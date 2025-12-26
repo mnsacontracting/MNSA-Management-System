@@ -127,4 +127,36 @@ elif menu == "💰 المشتريات والموردين":
                 conn.commit()
                 st.success("تم تسجيل المصروف بنجاح!")
     else:
-        st.warning("أضف مشروعاً أولاً")
+        st.warning("أضف مشروعاً أولاً")  
+        elif menu == "💰 المشتريات والموردين":
+    # (إضافة تبويب جديد داخل المشتريات)
+    st.subheader("📝 تحويل المقايسة إلى أمر شراء")
+    
+    projects = pd.read_sql_query("SELECT * FROM Projects", conn)
+    if not projects.empty:
+        sel_p = st.selectbox("اختر المشروع لجلب احتياجاته:", projects['ProjectName'], key="po_proj")
+        p_id = projects[projects['ProjectName'] == sel_p]['ProjectID'].values[0]
+        
+        # جلب بنود المقايسة لهذا المشروع
+        df_needs = pd.read_sql_query(f"SELECT ItemName, Quantity, Unit FROM ProjectBOM WHERE ProjectID = {p_id}", conn)
+        
+        if not df_needs.empty:
+            st.write("البنود المطلوبة بناءً على الحصر:")
+            st.dataframe(df_needs)
+            
+            with st.form("po_form"):
+                supplier = st.selectbox("اختر المورد المرشح", pd.read_sql_query("SELECT SupplierName FROM Suppliers", conn))
+                selected_item = st.selectbox("اختر البند المطلوب شراؤه", df_needs['ItemName'])
+                po_price = st.number_input("سعر الوحدة المتفق عليه", min_value=0.0)
+                po_qty = st.number_input("الكمية المطلوب توريدها الآن", min_value=0.0)
+                
+                if st.form_submit_button("إصدار أمر شراء رسمي"):
+                    total_po = po_price * po_qty
+                    cursor = conn.cursor()
+                    # تسجيل في جدول المشتريات لخصمه من الميزانية
+                    cursor.execute("""
+                        INSERT INTO Purchases (ProjectID, SupplierID, Amount, Description) 
+                        VALUES (?, (SELECT SupplierID FROM Suppliers WHERE SupplierName=?), ?, ?)
+                    """, (int(p_id), supplier, total_po, f"أمر شراء: {selected_item}"))
+                    conn.commit()
+                    st.success(f"✅ تم إصدار أمر الشراء بقيمة {total_po:,.2f} ج.م وتحديث ميزانية المشروع!")
