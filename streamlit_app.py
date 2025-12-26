@@ -172,4 +172,117 @@ elif menu == "💰 المشتريات والمصروفات":
                 conn.commit()
                 st.success("✅ تم تسجيل الفاتورة وتحديث الميزانية!")
     else:
-        st.warning("تأكد من وجود مشاريع وموردين مسجلين أولاً.")
+        st.warning("تأكد من وجود مشاريع وموردين مسجلين أولاً.") 
+        import streamlit as st
+import sqlite3
+import pandas as pd
+
+# 1. إعداد قاعدة البيانات الشاملة
+def init_db():
+    conn = sqlite3.connect('mnsa_erp_final.db')
+    cursor = conn.cursor()
+    # جداول النظام
+    cursor.execute('CREATE TABLE IF NOT EXISTS Projects (ProjectID INTEGER PRIMARY KEY AUTOINCREMENT, ProjectName TEXT, Location TEXT, Budget DECIMAL)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS ProjectBOM (BOMID INTEGER PRIMARY KEY AUTOINCREMENT, ProjectID INTEGER, ItemName TEXT, Quantity DECIMAL, Unit TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS Suppliers (SupplierID INTEGER PRIMARY KEY AUTOINCREMENT, SupplierName TEXT, Contact TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS Purchases (PurchaseID INTEGER PRIMARY KEY AUTOINCREMENT, ProjectID INTEGER, SupplierID INTEGER, Amount DECIMAL, Description TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS Employees (EmployeeID INTEGER PRIMARY KEY AUTOINCREMENT, EmployeeName TEXT, JobTitle TEXT, Salary DECIMAL)')
+    conn.commit()
+    return conn
+
+conn = init_db()
+
+# 2. تصميم الواجهة
+st.set_page_config(page_title="MNSA ERP v2", layout="wide")
+st.sidebar.title("🏗️ نظام MNSA المتكامل")
+
+menu = st.sidebar.selectbox("القائمة الرئيسية", [
+    "📊 لوحة التحكم المالية",
+    "🏢 إدارة المشاريع",
+    "📋 مقايسات البنود (BOM)",
+    "👷 إدارة الموردين",
+    "💰 المشتريات والمصروفات",
+    "👥 شؤون الموظفين والرواتب"
+])
+
+# --- 1. لوحة التحكم ---
+if menu == "📊 لوحة التحكم المالية":
+    st.header("📊 تحليل الأداء المالي")
+    df_p = pd.read_sql_query("SELECT * FROM Projects", conn)
+    if not df_p.empty:
+        for _, row in df_p.iterrows():
+            with st.expander(f"📉 مشروع: {row['ProjectName']}"):
+                p_id = row['ProjectID']
+                df_exp = pd.read_sql_query(f"SELECT SUM(Amount) as total FROM Purchases WHERE ProjectID = {p_id}", conn)
+                expenses = df_exp['total'][0] or 0
+                budget = row['Budget']
+                st.metric("الميزانية", f"{budget:,.2f}", delta=f"المتبقي: {budget-expenses:,.2f}")
+                st.progress(min(expenses/budget, 1.0) if budget > 0 else 0)
+    else:
+        st.info("ابدأ بإضافة مشاريع.")
+
+# --- 2. إدارة المشاريع ---
+elif menu == "🏢 إدارة المشاريع":
+    st.header("🏢 تسجيل مشروع")
+    with st.form("p_form"):
+        name = st.text_input("اسم المشروع")
+        bud = st.number_input("الميزانية", min_value=0.0)
+        if st.form_submit_button("حفظ"):
+            conn.execute("INSERT INTO Projects (ProjectName, Budget) VALUES (?, ?)", (name, bud))
+            conn.commit()
+            st.success("تم الحفظ")
+
+# --- 3. المقايسات ---
+elif menu == "📋 مقايسات البنود (BOM)":
+    st.header("📋 حصر الكميات")
+    projs = pd.read_sql_query("SELECT * FROM Projects", conn)
+    if not projs.empty:
+        sel = st.selectbox("اختر المشروع", projs['ProjectName'])
+        p_id = projs[projs['ProjectName']==sel]['ProjectID'].values[0]
+        with st.form("bom_f"):
+            item = st.text_input("البند")
+            qty = st.number_input("الكمية")
+            if st.form_submit_button("إضافة"):
+                conn.execute("INSERT INTO ProjectBOM (ProjectID, ItemName, Quantity) VALUES (?, ?, ?)", (int(p_id), item, qty))
+                conn.commit()
+        st.dataframe(pd.read_sql_query(f"SELECT ItemName, Quantity FROM ProjectBOM WHERE ProjectID={p_id}", conn))
+
+# --- 4. الموردين ---
+elif menu == "👷 إدارة الموردين":
+    st.header("👷 سجل الموردين")
+    with st.form("s_form"):
+        s_name = st.text_input("اسم المورد")
+        if st.form_submit_button("إضافة"):
+            conn.execute("INSERT INTO Suppliers (SupplierName) VALUES (?)", (s_name,))
+            conn.commit()
+    st.dataframe(pd.read_sql_query("SELECT * FROM Suppliers", conn))
+
+# --- 5. المشتريات ---
+elif menu == "💰 المشتريات والمصروفات":
+    st.header("💰 تسجيل المصاريف")
+    projs = pd.read_sql_query("SELECT * FROM Projects", conn)
+    supps = pd.read_sql_query("SELECT * FROM Suppliers", conn)
+    if not projs.empty:
+        with st.form("buy_f"):
+            p_sel = st.selectbox("المشروع", projs['ProjectName'])
+            s_sel = st.selectbox("المورد", supps['SupplierName'] if not supps.empty else ["عام"])
+            amt = st.number_input("المبلغ")
+            desc = st.text_input("البيان")
+            if st.form_submit_button("تسجيل الفاتورة"):
+                p_id = projs[projs['ProjectName']==p_sel]['ProjectID'].values[0]
+                conn.execute("INSERT INTO Purchases (ProjectID, Amount, Description) VALUES (?, ?, ?)", (int(p_id), amt, desc))
+                conn.commit()
+                st.success("تم التسجيل")
+
+# --- 6. الموظفين ---
+elif menu == "👥 شؤون الموظفين والرواتب":
+    st.header("👥 الموظفين واليوميات")
+    with st.form("e_form"):
+        e_name = st.text_input("الاسم")
+        job = st.text_input("الوظيفة")
+        if st.form_submit_button("حفظ الموظف"):
+            conn.execute("INSERT INTO Employees (EmployeeName, JobTitle) VALUES (?, ?)", (e_name, job))
+            conn.commit()
+            st.success("تم التسجيل")
+    st.dataframe(pd.read_sql_query("SELECT * FROM Employees", conn)) 
+    
