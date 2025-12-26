@@ -1,102 +1,52 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from datetime import datetime
 
-# --- 1. بناء قاعدة البيانات (كافة الجداول المطلوبة بدقة) ---
-def init_db():
-    conn = sqlite3.connect('mnsa_ultimate_system_2025.db')
-    cursor = conn.cursor()
-    # المحاسبة والمالية
-    cursor.execute('CREATE TABLE IF NOT EXISTS ChartOfAccounts (AccID INTEGER PRIMARY KEY, AccName TEXT, AccType TEXT)')
-    cursor.execute('CREATE TABLE IF NOT EXISTS JournalEntries (EntryID INTEGER PRIMARY KEY AUTOINCREMENT, Date TEXT, Description TEXT)')
-    cursor.execute('CREATE TABLE IF NOT EXISTS CashBank (AccountID INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT, Type TEXT, Balance REAL)')
-    
-    # الأشخاص والمخازن
-    cursor.execute('CREATE TABLE IF NOT EXISTS Suppliers (SupplierID INTEGER PRIMARY KEY AUTOINCREMENT, SupplierName TEXT, Contact TEXT, Balance REAL DEFAULT 0)')
-    cursor.execute('CREATE TABLE IF NOT EXISTS Customers (CustomerID INTEGER PRIMARY KEY AUTOINCREMENT, CustomerName TEXT, Contact TEXT, Balance REAL DEFAULT 0)')
-    cursor.execute('CREATE TABLE IF NOT EXISTS Inventory (ItemID INTEGER PRIMARY KEY AUTOINCREMENT, ItemName TEXT UNIQUE, Qty REAL, Unit TEXT)')
-    
-    # المشتريات والمستخلصات
-    cursor.execute('CREATE TABLE IF NOT EXISTS Projects (ProjectID INTEGER PRIMARY KEY AUTOINCREMENT, ProjectName TEXT, Budget REAL)')
-    cursor.execute('CREATE TABLE IF NOT EXISTS Purchases (PurchID INTEGER PRIMARY KEY AUTOINCREMENT, ProjectID INTEGER, SupplierID INTEGER, Total REAL, Description TEXT, Date TEXT)')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS Certificates 
-                      (CertID INTEGER PRIMARY KEY AUTOINCREMENT, ProjectID INTEGER, TotalAmount REAL, Deductions REAL, NetAmount REAL, Status TEXT)''')
-    
-    conn.commit()
-    return conn
+# الاتصال بقاعدة البيانات (تأكد أن اسم الملف مطابق لملفك)
+def get_connection():
+    return sqlite3.connect('mnsa_ultimate_2025.db')
 
-conn = init_db()
+st.set_page_config(page_title="MNSA Database Search", layout="wide")
+st.title("🔍 محرك البحث في قاعدة بيانات MNSA")
 
-# --- 2. إعداد واجهة البرنامج ---
-st.set_page_config(page_title="MNSA ERP - Search & Entry", layout="wide")
+# 1. جلب أسماء كل الجداول الموجودة في قاعدة بياناتك تلقائياً
+conn = get_connection()
+cursor = conn.cursor()
+cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+tables = [row[0] for row in cursor.fetchall() if row[0] != 'sqlite_sequence']
 
-# --- 3. محرك التنقل الرئيسي ---
-st.sidebar.title("🏗️ نظام MNSA الموحد")
-menu = st.sidebar.selectbox("اختر المحرك:", ["📥 محرك الإدخال", "🔍 محرك البحث والتقارير"])
-
-# ---------------------------------------------------------
-# القسم الأول: محرك الإدخال (Entry Engine)
-# ---------------------------------------------------------
-if menu == "📥 محرك الإدخال":
-    st.header("📥 إدخال البيانات للجدول")
-    target_table = st.selectbox("اختر الجدول المستهدف:", 
-                                ["الموردين", "العملاء", "المخازن", "المشاريع", "المشتريات", "سندات نقدية"])
+if tables:
+    # اختيار الجدول المراد البحث داخله
+    selected_table = st.sidebar.selectbox("اختر الجدول (الموردين، العملاء، المخازن...):", tables)
     
-    st.markdown("---")
+    # 2. قراءة بيانات الجدول المختار
+    df = pd.read_sql_query(f"SELECT * FROM {selected_table}", conn)
     
-    if target_table == "الموردين":
-        with st.form("supp_form"):
-            name = st.text_input("اسم المورد")
-            contact = st.text_input("رقم الهاتف")
-            if st.form_submit_button("إضافة للموردين"):
-                conn.execute("INSERT INTO Suppliers (SupplierName, Contact) VALUES (?,?)", (name, contact))
-                conn.commit()
-                st.success("تم الحفظ")
-
-    elif target_table == "المخازن":
-        with st.form("inv_form"):
-            item = st.text_input("اسم الصنف")
-            qty = st.number_input("الكمية")
-            unit = st.selectbox("الوحدة", ["م3", "طن", "عدد"])
-            if st.form_submit_button("تحديث المخزن"):
-                conn.execute("INSERT INTO Inventory (ItemName, Qty, Unit) VALUES (?,?,?) ON CONFLICT(ItemName) DO UPDATE SET Qty = Qty + ?", (item, qty, unit, qty))
-                conn.commit()
-                st.success("تم التحديث")
-
-# ---------------------------------------------------------
-# القسم الثاني: محرك البحث (Search Engine)
-# ---------------------------------------------------------
-elif menu == "🔍 محرك البحث والتقارير":
-    st.header("🔍 محرك البحث في قاعدة البيانات")
+    st.header(f"جدول: {selected_table}")
     
-    search_table = st.selectbox("ابحث في جدول:", 
-                                ["Suppliers", "Customers", "Inventory", "Projects", "Purchases", "Certificates"])
+    # 3. محرك البحث الذكي داخل الجدول
+    search_term = st.text_input(f"اكتب أي كلمة للبحث داخل {selected_table} (اسم، مبلغ، تاريخ...):")
     
-    # واجهة البحث الذكي
-    search_query = st.text_input(f"اكتب اسم أو بيان للبحث في جدول {search_table}...")
-    
-    # سحب البيانات بناءً على البحث
-    df = pd.read_sql_query(f"SELECT * FROM {search_table}", conn)
-    
-    if search_query:
-        # فلترة البيانات برمجياً بناءً على نص البحث
-        mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
-        df_filtered = df[mask]
+    if search_term:
+        # البحث في كل الأعمدة في وقت واحد
+        mask = df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False)).any(axis=1)
+        filtered_df = df[mask]
+        st.success(f"تم العثور على {len(filtered_df)} سجل")
     else:
-        df_filtered = df
+        filtered_df = df
 
-    st.subheader(f"نتائج جدول {search_table}")
-    st.dataframe(df_filtered, use_container_width=True)
+    # 4. عرض الجدول بشكل مطابق لقاعدة البيانات
+    st.dataframe(filtered_df, use_container_width=True)
     
-    # إحصائيات سريعة للجدول الظاهر
-    if not df_filtered.empty:
-        st.write(f"عدد السجلات المكتشفة: {len(df_filtered)}")
-        if 'Balance' in df_filtered.columns or 'Total' in df_filtered.columns:
-            total_val = df_filtered.iloc[:, -1].sum() # افتراض أن القيمة المالية في آخر عمود
-            st.info(f"إجمالي القيم المالية في هذا البحث: {total_val:,.2f} ج.م")
+    # ميزة إضافية: إحصائيات سريعة للقيم المالية
+    numeric_cols = filtered_df.select_dtypes(include=['number']).columns
+    if not filtered_df.empty and len(numeric_cols) > 0:
+        st.subheader("📊 ملخص مالي سريع لنتائج البحث:")
+        col_to_sum = st.selectbox("اختر العمود لجمع قيمه (مثل الرصيد أو الإجمالي):", numeric_cols)
+        st.metric(label=f"إجمالي {col_to_sum}", value=f"{filtered_df[col_to_sum].sum():,.2f}")
 
-# --- تذييل الصفحة ---
-st.sidebar.markdown("---")
-if st.sidebar.button("🔄 تحديث النظام"):
-    st.rerun()
+else:
+    st.error("لم يتم العثور على جداول في قاعدة البيانات. تأكد من رفع الملف الصحيح.")
+
+conn.close()
+لماذا هذا الكود هو الحل؟
