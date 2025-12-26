@@ -76,4 +76,36 @@ if menu == "لوحة التحكم":
     
     # عرض جدول المشاريع الحالي لسهولة الوصول
     st.write("### قائمة المشاريع الحالية")
-    st.dataframe(df_projects, use_container_width=True)
+    st.dataframe(df_projects, use_container_width=True) 
+
+elif menu == "إدارة المشتريات":
+    st.header("💰 تسجيل فواتير المشتريات")
+    
+    # سحب الموردين والمشاريع من القاعدة
+    suppliers_df = pd.read_sql_query("SELECT * FROM Suppliers", conn)
+    projects_df = pd.read_sql_query("SELECT * FROM Projects", conn)
+    
+    if not suppliers_df.empty and not projects_df.empty:
+        with st.form("purchase_form"):
+            col1, col2 = st.columns(2)
+            supplier = col1.selectbox("اختر المورد", suppliers_df['SupplierName'])
+            project = col2.selectbox("تخصيص للمشروع", projects_df['ProjectName'])
+            amount = st.number_input("قيمة الفاتورة (ج.م)", min_value=0.0)
+            note = st.text_area("ملاحظات (مثل: توريد حديد عز)")
+            
+            if st.form_submit_button("تسجيل الفاتورة"):
+                cursor = conn.cursor()
+                # جلب المعرفات
+                s_id = suppliers_df[suppliers_df['SupplierName'] == supplier]['SupplierID'].values[0]
+                p_id = projects_df[projects_df['ProjectName'] == project]['ProjectID'].values[0]
+                
+                # إدخال البيانات (بناءً على هيكل ملفك)
+                cursor.execute("""
+                    INSERT INTO InventoryTransactions (ProjectID, TransactionType, Quantity, UnitPrice) 
+                    VALUES (?, 'Purchase', 1, ?)
+                """, (int(p_id), amount))
+                conn.commit()
+                st.success(f"تم تسجيل فاتورة بقيمة {amount:,.2f} لمشروع {project}")
+    else:
+        st.warning("يجب إضافة موردين ومشاريع أولاً لتتمكن من تسجيل المشتريات.") 
+        
