@@ -87,4 +87,36 @@ elif menu == "حصر الكميات (BOM)":
         df_bom = pd.read_sql_query(f"SELECT ItemName, Quantity, Unit FROM ProjectBOM WHERE ProjectID = {p_id}", conn)
         st.table(df_bom)
     else:
-        st.warning("يجب إضافة مشروع أولاً.")
+        st.warning("يجب إضافة مشروع أولاً.")   
+        # --- القسم الرابع: محرك الحصر والطلبيات ---
+elif menu == "حصر الكميات (BOM)":
+    # (الكود السابق لعرض الجدول...)
+    
+    st.markdown("---")
+    st.header("📊 تحليل المواد الخام المطلوبة (حصر تلقائي)")
+    
+    if not df_bom.empty:
+        total_materials = {
+            "أسمنت (طن)": 0, "حديد (طن)": 0, "رمل (م3)": 0, "سن (م3)": 0
+        }
+        
+        for _, row in df_bom.iterrows():
+            item = str(row['ItemName']).lower()
+            qty = float(row['Quantity'])
+            
+            if "مسلحة" in item:
+                total_materials["أسمنت (طن)"] += qty * 0.35
+                total_materials["حديد (طن)"] += qty * 0.095
+                total_materials["رمل (م3)"] += qty * 0.4
+                total_materials["سن (م3)"] += qty * 0.8
+            elif "عادية" in item:
+                total_materials["أسمنت (طن)"] += qty * 0.25
+                total_materials["رمل (م3)"] += qty * 0.4
+                total_materials["سن (م3)"] += qty * 0.8
+        
+        # عرض النتائج في شكل بطاقات (Cards)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("إجمالي الأسمنت", f"{total_materials['أسمنت (طن)']:,.2f} طن")
+        c2.metric("إجمالي الحديد", f"{total_materials['حديد (طن)']:,.2f} طن")
+        c3.metric("إجمالي الرمل", f"{total_materials['رمل (م3)']:,.2f} م3")
+        c4.metric("إجمالي السن", f"{total_materials['سن (م3)']:,.2f} م3")
