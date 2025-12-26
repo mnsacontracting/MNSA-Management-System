@@ -91,4 +91,8 @@ elif menu == "حصر المواد (BOM)":
 
     # عرض الحصر
     df_bom = pd.read_sql_query(f"SELECT ItemName, Quantity, Unit FROM ProjectBOM WHERE ProjectID = {p_id}", conn)
-    st.table(df_bom)
+    st.table(df_bom) 
+
+st.markdown("---")
+    st.subheader("📦 حالة المخزون والمشتريات")
+    # هنا يمكننا عرض تنبيهات إذا كان هناك بنود تحتاج شراء فور
